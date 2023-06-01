@@ -46,14 +46,6 @@ DEFAULT_TEST_CMD = 'make'
 class EB_stitch(EasyBlock):
     """Support for building/installing stitch."""
 
-#     @staticmethod
-#     def extra_options(extra_vars=None):
-#         """Define custom easyconfig parameters specific to Scotch."""
-#         extra_vars = {
-#             'threadedmpi': [None, "Use threaded MPI calls.", CUSTOM],
-#         }
-#         return EasyBlock.extra_options(extra_vars)
-
     def configure_step(self):
         """Configure SCOTCH build: locate the template makefile, copy it to a general Makefile.inc and patch it."""
 
@@ -69,38 +61,6 @@ class EB_stitch(EasyBlock):
             (r"^(CXX\s*=\s*).*$", r"\1%s" % os.environ['MPICXX'])
         ]
         apply_regex_substitutions(makefile_stitch, regex_subs_stitch)
-
-        # pick template makefile
-#        comp_fam = self.toolchain.comp_family()
-#        if comp_fam == toolchain.INTELCOMP:  # @UndefinedVariable
-#            makefilename = 'Makefile.inc.x86-64_pc_linux2.icc'
-#        elif comp_fam == toolchain.GCC:  # @UndefinedVariable
-#            makefilename = 'Makefile.inc.x86-64_pc_linux2'
-#        else:
-#            raise EasyBuildError("Unknown compiler family used: %s", comp_fam)
-
-#         srcdir = os.path.join(self.cfg['start_dir'], 'src')
-# 
-#         # create Makefile.inc
-#         makefile_inc = os.path.join(srcdir, 'Makefile.inc')
-#         copy_file(os.path.join(srcdir, 'Make.inc', makefilename), makefile_inc)
-#         self.log.debug("Successfully copied Makefile.inc to src dir: %s", makefile_inc)
-# 
-#         # the default behaviour of these makefiles is still wrong
-#         # e.g., compiler settings, and we need -lpthread
-#         regex_subs = [
-#             (r"^CCS\s*=.*$", "CCS\t= $(CC)"),
-#             (r"^CCP\s*=.*$", "CCP\t= $(MPICC)"),
-#             (r"^CCD\s*=.*$", "CCD\t= $(MPICC)"),
-#             # append -lpthread to LDFLAGS
-#             (r"^LDFLAGS\s*=(?P<ldflags>.*$)", r"LDFLAGS\t=\g<ldflags> -lpthread"),
-#             # prepend -L${EBROOTZLIB}/lib to LDFLAGS
-#             (r"^LDFLAGS\s*=(?P<ldflags>.*$)", r"LDFLAGS\t=-L${EBROOTZLIB}/lib \g<ldflags>"),
-#         ]
-#         apply_regex_substitutions(makefile_inc, regex_subs)
-# 
-#         # change to src dir for building
-#         change_dir(srcdir)
 
     def test_step(self):
         """

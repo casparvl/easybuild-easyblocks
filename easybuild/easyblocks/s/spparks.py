@@ -47,19 +47,21 @@ DEFAULT_TEST_CMD = 'make'
 class EB_spparks(EasyBlock):
     """Support for building/installing SPPARKS."""
 
+    @staticmethod
+    def extra_options(extra_vars=None):
+        """Extra easyconfig parameters specific to ConfigureMake."""
+        extra_vars = EasyBlock.extra_options(extra=extra_vars)
+        extra_vars.update({
+            'build_cmd': [DEFAULT_BUILD_CMD, "Build command to use", CUSTOM],
+            'test_cmd': [DEFAULT_TEST_CMD, "Test command to use ('runtest' value is appended)", CUSTOM],
+        })
+        return extra_vars
+
     def __init__(self, *args, **kwargs):
         super(EB_spparks, self).__init__(*args, **kwargs)
 
         # Name of the 'target machine' as it is know by the spparks build system
         self.machine = 'eb'
-
-#     @staticmethod
-#     def extra_options(extra_vars=None):
-#         """Define custom easyconfig parameters specific to Scotch."""
-#         extra_vars = {
-#             'threadedmpi': [None, "Use threaded MPI calls.", CUSTOM],
-#         }
-#         return EasyBlock.extra_options(extra_vars)
 
     def configure_step(self):
         """Configure SCOTCH build: locate the template makefile, copy it to a general Makefile.inc and patch it."""
@@ -99,29 +101,6 @@ class EB_spparks(EasyBlock):
 #        else:
 #            raise EasyBuildError("Unknown compiler family used: %s", comp_fam)
 
-#         srcdir = os.path.join(self.cfg['start_dir'], 'src')
-# 
-#         # create Makefile.inc
-#         makefile_inc = os.path.join(srcdir, 'Makefile.inc')
-#         copy_file(os.path.join(srcdir, 'Make.inc', makefilename), makefile_inc)
-#         self.log.debug("Successfully copied Makefile.inc to src dir: %s", makefile_inc)
-# 
-#         # the default behaviour of these makefiles is still wrong
-#         # e.g., compiler settings, and we need -lpthread
-#         regex_subs = [
-#             (r"^CCS\s*=.*$", "CCS\t= $(CC)"),
-#             (r"^CCP\s*=.*$", "CCP\t= $(MPICC)"),
-#             (r"^CCD\s*=.*$", "CCD\t= $(MPICC)"),
-#             # append -lpthread to LDFLAGS
-#             (r"^LDFLAGS\s*=(?P<ldflags>.*$)", r"LDFLAGS\t=\g<ldflags> -lpthread"),
-#             # prepend -L${EBROOTZLIB}/lib to LDFLAGS
-#             (r"^LDFLAGS\s*=(?P<ldflags>.*$)", r"LDFLAGS\t=-L${EBROOTZLIB}/lib \g<ldflags>"),
-#         ]
-#         apply_regex_substitutions(makefile_inc, regex_subs)
-# 
-#         # change to src dir for building
-#         change_dir(srcdir)
-
     def build_step(self, verbose=False, path=None):
         """
         Start the actual build
@@ -158,6 +137,17 @@ class EB_spparks(EasyBlock):
 
         return out 
 
+    def test_step(self):
+        """
+        Test the compilation
+        - default: None
+        """
+        self.log.info("Running test step in directory %s" % os.getcwd())
+        test_cmd = self.cfg.get('test_cmd')
+        (out, _) = run_cmd(test_cmd, log_all=True, simple=False)
+
+        return out
+
     def install_step(self):
         """Install by copying files and creating group library file."""
 
@@ -176,14 +166,7 @@ class EB_spparks(EasyBlock):
             target = os.path.join(self.installdir, 'bin', binary_name)
             copy_file(src, target)
             # Create link e.g. spk => spk.eb
-            symlink(
-                target, 
-                os.path.join(
-                    self.installdir, 
-                    'bin', 
-                    binary
-                )
-            )
+            symlink(target, os.path.join(self.installdir, 'bin', binary))
 
         for header in headers:
             copy_file(header, os.path.join(self.installdir, 'include', os.path.basename(header)))
