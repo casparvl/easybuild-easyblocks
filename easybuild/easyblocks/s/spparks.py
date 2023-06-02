@@ -23,21 +23,18 @@
 # along with EasyBuild.  If not, see <http://www.gnu.org/licenses/>.
 ##
 """
-EasyBuild support for SCOTCH, implemented as an easyblock
+EasyBuild support for spparks, implemented as an easyblock
 
-@author: Pieter D (Ghent University)
-@author: Jens Timmerman (Ghent University)
+@author: Caspar van Leeuwen (SURF)
+@author: Monica Rotulo (SURF)
 """
 import os
 import glob
-from distutils.version import LooseVersion
 
 import easybuild.tools.toolchain as toolchain
 from easybuild.framework.easyblock import EasyBlock
 from easybuild.framework.easyconfig import CUSTOM
-from easybuild.tools.build_log import EasyBuildError
-from easybuild.tools.filetools import apply_regex_substitutions, change_dir, copy_dir, copy_file, symlink
-from easybuild.tools.filetools import remove_file, write_file
+from easybuild.tools.filetools import apply_regex_substitutions, change_dir, copy_file, symlink
 from easybuild.tools.modules import get_software_root
 from easybuild.tools.run import run_cmd
 from easybuild.tools.systemtools import get_shared_lib_ext
@@ -46,7 +43,7 @@ DEFAULT_BUILD_CMD = 'make'
 DEFAULT_TEST_CMD = 'make'
 
 class EB_spparks(EasyBlock):
-    """Support for building/installing SPPARKS."""
+    """Support for building/installing spparks."""
 
     @staticmethod
     def extra_options(extra_vars=None):
@@ -59,7 +56,7 @@ class EB_spparks(EasyBlock):
         return extra_vars
 
     def configure_step(self):
-        """Configure SCOTCH build: locate the template makefile, copy it to a general Makefile.inc and patch it."""
+        """Configure spparks build: locate the template makefile and patch it based on flags and deps from eb."""
 
         self.spparks_srcdir = os.path.join(self.cfg['start_dir'], 'src')
 
@@ -112,10 +109,9 @@ class EB_spparks(EasyBlock):
         makefile_include_dir = os.path.join(self.spparks_srcdir, 'MAKE')
         # Parallel build?
         if self.toolchain.options.get('usempi', False):
-            self.machine = 'eb'
+            self.machine = 'mpi'
             # modify makefile for spparks, using the *.mpi makefile as starting point
             makefile_spparks = os.path.join(makefile_include_dir, 'Makefile.%s' % self.machine)
-            copy_file(os.path.join(makefile_include_dir, 'Makefile.mpi'), makefile_spparks)
         else:
             self.machine = 'serial'
             # modify the serial makefile. We don't make a copy, since the Makefile has special behaviour
@@ -147,11 +143,6 @@ class EB_spparks(EasyBlock):
         if self.cfg['parallel']:
             paracmd = "-j %s" % self.cfg['parallel']
 
-        # In our configure_step, we generate a Makefile.eb. Thus, we hardcode that 'eb' as a build target here.
-        # These are the document targets to build the executable, shared library, and static library
-        # However, building the shared and static lib currently fails with missing file errors, e.g. app_cpm.cpp
-        # targets = ['eb', '-f Makefile.shlib eb', '-f Makefile.lib eb']
-
         # The mode=shlib is _not_ documented, but is one of the targets shown in the makefile, and seems to succesfully
         # build the shared library
         targets = [self.machine, 'mode=shlib %s' % self.machine, 'mode=lib %s' % self.machine]
@@ -173,7 +164,8 @@ class EB_spparks(EasyBlock):
     def test_step(self):
         """
         Test the compilation
-        - default: None
+        - typically: 'mpirun -np 2 spk_mpi -echo screen < ../examples/potts/in.potts'
+        or 'spk_serial -echo screen < ../examples/potts/in.potts'
         """
         self.log.info("Running test step in directory %s" % os.getcwd())
         test_cmd = self.cfg.get('test_cmd')
@@ -198,19 +190,19 @@ class EB_spparks(EasyBlock):
             src = os.path.join(self.spparks_srcdir, binary_name)
             target = os.path.join(self.installdir, 'bin', binary_name)
             copy_file(src, target)
-            # Create link e.g. spk => spk.eb
+            # Create link spk => spk.<self.machine>
             symlink(target, os.path.join(self.installdir, 'bin', binary))
 
         for header in headers:
             copy_file(header, os.path.join(self.installdir, 'include', os.path.basename(header)))
 
         for lib in shared_libs:
-            # TODO: should probably use something like the SHLIB_EXT template, but no clue how we can do this in an EasyBlock?
             libname = '%s_%s.%s' % (lib, self.machine, get_shared_lib_ext())
             src = os.path.join(self.spparks_srcdir, libname)
             target = os.path.join(self.installdir, 'lib', libname)
             copy_file(src, target)
-            # todo: create link
+            # Create link, e.g. libspparks_<self.machine>.so => libspparks.so
+            # Regular spparks installation also creates these links for the libraries
             symlink(target, os.path.join(self.installdir, 'lib', '%s.%s' % (lib, get_shared_lib_ext())))
 
         for lib in static_libs:
@@ -218,5 +210,5 @@ class EB_spparks(EasyBlock):
             src = os.path.join(self.spparks_srcdir, libname)
             target = os.path.join(self.installdir, 'lib', libname)
             copy_file(src, target)
-            # todo: create link
+            # Create link e.g. libspparks_<self.machine>.a => libspparks.a
             symlink(target, os.path.join(self.installdir, 'lib', '%s.a' % lib))

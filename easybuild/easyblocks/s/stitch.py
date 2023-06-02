@@ -29,25 +29,35 @@ EasyBuild support for stitch, implemented as an easyblock
 @author: Monica Rotulo (SURF)
 """
 import os
-from distutils.version import LooseVersion
 
 import easybuild.tools.toolchain as toolchain
 from easybuild.framework.easyblock import EasyBlock
 from easybuild.framework.easyconfig import CUSTOM
-from easybuild.tools.build_log import EasyBuildError
-from easybuild.tools.filetools import apply_regex_substitutions, change_dir, copy_dir, copy_file
-from easybuild.tools.filetools import remove_file, write_file
+from easybuild.tools.filetools import apply_regex_substitutions, change_dir, copy_file
 from easybuild.tools.run import run_cmd
 
 DEFAULT_BUILD_CMD = 'make'
 DEFAULT_BUILD_TARGET = ''
 DEFAULT_TEST_CMD = 'make'
 
+
 class EB_stitch(EasyBlock):
     """Support for building/installing stitch."""
 
+    @staticmethod
+    def extra_options(extra_vars=None):
+        """Extra easyconfig parameters specific to ConfigureMake."""
+        extra_vars = EasyBlock.extra_options(extra=extra_vars)
+        extra_vars.update({
+            'build_cmd': [DEFAULT_BUILD_CMD, "Build command to use", CUSTOM],
+            'build_cmd_targets': [DEFAULT_BUILD_TARGET, "Target name (string) or list of target names to build",
+                                  CUSTOM],
+            'test_cmd': [DEFAULT_TEST_CMD, "Test command to use ('runtest' value is appended)", CUSTOM],
+        })
+        return extra_vars
+
     def configure_step(self):
-        """Configure SCOTCH build: locate the template makefile, copy it to a general Makefile.inc and patch it."""
+        """Configure stitch build: locate the template makefile, and patch it."""
 
         # Currently, Stitch is part of the spparks source code. This might change in future versions,
         # so the srdir_stitch may change
@@ -77,7 +87,7 @@ class EB_stitch(EasyBlock):
     def test_step(self):
         """
         Test the compilation
-        - default: None
+        - typically: make stitch_test && mpirun -np 4 stitch_test
         """
 
         test_cmd = self.cfg.get('test_cmd') or DEFAULT_TEST_CMD
@@ -124,7 +134,7 @@ class EB_stitch(EasyBlock):
         return out
 
     def install_step(self):
-        """Install by copying files and creating group library file."""
+        """Install by copying files."""
 
         self.log.debug("Installing stitch by copying files")
 
