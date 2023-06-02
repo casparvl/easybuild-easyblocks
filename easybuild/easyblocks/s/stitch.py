@@ -23,10 +23,10 @@
 # along with EasyBuild.  If not, see <http://www.gnu.org/licenses/>.
 ##
 """
-EasyBuild support for SCOTCH, implemented as an easyblock
+EasyBuild support for stitch, implemented as an easyblock
 
-@author: Pieter D (Ghent University)
-@author: Jens Timmerman (Ghent University)
+@author: Caspar van Leeuwen (SURF)
+@author: Monica Rotulo (SURF)
 """
 import os
 from distutils.version import LooseVersion
@@ -56,9 +56,21 @@ class EB_stitch(EasyBlock):
         # To configure libstitch, we alter the makefile
         makefile_stitch = os.path.join(self.srcdir_stitch, 'Makefile')
 
+        if self.toolchain.options.get('usempi', False):
+            cc = os.environ['MPICC']
+            cxx = os.environ['MPICXX']
+        else:
+            cc = os.environ['CC']
+            cxx = os.environ['CXX']
+
+        # Makefile doesn't contain any flags. Easiest way to add them is just append to the compiler command...
+        if self.toolchain.options.get('optarch', False):
+            cc += ' %s' % self.toolchain.get_flag('optarch')
+            cxx += ' %s' % self.toolchain.get_flag('optarch')
+
         regex_subs_stitch = [
-            (r"^(CC\s*=\s*).*$", r"\1%s" % os.environ['MPICC']),
-            (r"^(CXX\s*=\s*).*$", r"\1%s" % os.environ['MPICXX'])
+            (r"^(CC\s*=\s*).*$", r"\1%s" % cc),
+            (r"^(CXX\s*=\s*).*$", r"\1%s" % cxx)
         ]
         apply_regex_substitutions(makefile_stitch, regex_subs_stitch)
 
