@@ -38,6 +38,7 @@ from easybuild.framework.easyconfig import CUSTOM
 from easybuild.tools.build_log import EasyBuildError
 from easybuild.tools.filetools import apply_regex_substitutions, change_dir, copy_dir, copy_file, symlink
 from easybuild.tools.filetools import remove_file, write_file
+from easybuild.tools.modules import get_software_root
 from easybuild.tools.run import run_cmd
 from easybuild.tools.systemtools import get_shared_lib_ext
 
@@ -57,49 +58,81 @@ class EB_spparks(EasyBlock):
         })
         return extra_vars
 
-    def __init__(self, *args, **kwargs):
-        super(EB_spparks, self).__init__(*args, **kwargs)
-
-        # Name of the 'target machine' as it is know by the spparks build system
-        self.machine = 'eb'
-
     def configure_step(self):
         """Configure SCOTCH build: locate the template makefile, copy it to a general Makefile.inc and patch it."""
 
         self.spparks_srcdir = os.path.join(self.cfg['start_dir'], 'src')
 
-        # modify makefile for spparks, using the *.mpi makefile as starting point
-        makefile_include_dir = os.path.join(self.spparks_srcdir, 'MAKE')
-        makefile_spparks = os.path.join(makefile_include_dir, 'Makefile.%s' % self.machine)
-        copy_file(os.path.join(makefile_include_dir, 'Makefile.mpi'), makefile_spparks)
+        # check if toolchain options exist. If so, set variable so it may be used in substitution in Makefile later on
+        ccflags = ''
+        if self.toolchain.options.get('optarch', False):
+            ccflags += ' %s' % self.toolchain.get_flag('optarch')
+        cstd = self.toolchain.options.get('cstd', None)
+        if cstd:
+            ccflags += ' %s' % self.toolchain.get_flag('cstd')
 
-        if self.toolchain.options['cstd']:
-            ccflags = '-std=%s %s' % (self.toolchain.options['cstd'], os.environ['OPTFLAGS'])
-        else:
-            ccflags = os.environ['OPTFLAGS']
-
-        if self.toolchain.options['pic']:
-             pic = '-%s' % self.toolchain.options.options_map['pic']
+        if self.toolchain.options.get('pic', False):
+             pic = '%s' % self.toolchain.get_flag('pic')
         else:
              pic = ''
 
+        spk_inc = ''
+        if self.toolchain.options.get('usempi', False):
+            cxx = os.environ['MPICXX']
+            mpi_inc = ''
+            mpi_lib = ''
+            # It's undocumented what this does, but the example makefiles seem to always contain it for MPI-based builds
+            spk_inc += ' -DSPPARKS_UNORDERED_MAP' 
+        else:
+            cxx = os.environ['CXX']
+
+        # Build with gzip support?
+        gzip_root = get_software_root('gzip')
+        if gzip_root:
+            spk_inc += ' -DSPPARKS_GZIP'
+
+        # Build with jpeg support?
+        jpeg_root = get_software_root('libjpeg-turbo')
+        if jpeg_root:
+            jpeg_lib = '-ljpeg'
+            spk_inc += ' -DSPPARKS_JPEG'
+        else:
+            jpeg_lib = ''
+
         regex_subs_spparks = [
-            (r"^(CC\s*=\s*).*$", r"\1%s" % os.environ['MPICXX']),  # TODO: put in logic to test: if its an MPI based toolchain, use MPICXX, otherwise use CXX
-            (r"^(LINK\s*=\s*).*$", r"\1%s" % os.environ['MPICXX']),  # TODO: see above
+            (r"^(CC\s*=\s*).*$", r"\1%s" % cxx),
+            (r"^(LINK\s*=\s*).*$", r"\1%s" % cxx),
             (r"^(CCFLAGS\s*=\s*).*$", r"\1%s" % ccflags),
             (r"^(SHFLAGS\s*=\s*).*$", r"\1%s" % pic),
             (r"^(LINKFLAGS\s*=\s*).*$", r"\1%s" % os.environ['LDFLAGS']),
+            (r"^(JPG_LIB\s*=\s*).*$", r"\1%s" % jpeg_lib),
+            (r"^(SPK_INC\s*=\s*).*$", r"\1%s" % spk_inc),
         ]
-        apply_regex_substitutions(makefile_spparks, regex_subs_spparks)
+        
+        makefile_include_dir = os.path.join(self.spparks_srcdir, 'MAKE')
+        # Parallel build?
+        if self.toolchain.options.get('usempi', False):
+            self.machine = 'eb'
+            # modify makefile for spparks, using the *.mpi makefile as starting point
+            makefile_spparks = os.path.join(makefile_include_dir, 'Makefile.%s' % self.machine)
+            copy_file(os.path.join(makefile_include_dir, 'Makefile.mpi'), makefile_spparks)
+        else:
+            self.machine = 'serial'
+            # modify the serial makefile. We don't make a copy, since the Makefile has special behaviour
+            # for the target 'serial', so we can't change the target name
+            makefile_spparks = os.path.join(makefile_include_dir, 'Makefile.%s' % self.machine)
 
-        # pick template makefile
-#        comp_fam = self.toolchain.comp_family()
-#        if comp_fam == toolchain.INTELCOMP:  # @UndefinedVariable
-#            makefilename = 'Makefile.inc.x86-64_pc_linux2.icc'
-#        elif comp_fam == toolchain.GCC:  # @UndefinedVariable
-#            makefilename = 'Makefile.inc.x86-64_pc_linux2'
-#        else:
-#            raise EasyBuildError("Unknown compiler family used: %s", comp_fam)
+            # for the STUBS mpi library that spparks builds
+            makefile_stubs = os.path.join(self.spparks_srcdir, 'STUBS', 'Makefile')
+            ccflags_stubs = '%s %s' % (ccflags, pic)
+            regex_subs_stubs = [
+                (r"^(CC\s*=\s*).*$", r"\1%s" % cxx),
+                (r"^(CCFLAGS\s*=\s*).*$", r"\1%s" % ccflags_stubs),
+            ]
+            apply_regex_substitutions(makefile_stubs, regex_subs_stubs)
+       
+
+        apply_regex_substitutions(makefile_spparks, regex_subs_spparks)
 
     def build_step(self, verbose=False, path=None):
         """
